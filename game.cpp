@@ -2,8 +2,13 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <GL/glut.h>
+#include <math.h>
 
+
+#include "Camera.h"
+#include "util/Vec3f.h"
 #include "world/Chunk.h"
+#include "Entity.h"
 
 #define ESCAPE 27
 
@@ -11,19 +16,22 @@ using namespace std;
 
 // window stuff
 int window, scale = 16,
-	Width, Height, 
-	mWidth, mHeight;
+	Width, Height;
+
+GLfloat gui[16];
+Camera cam;
+Vec3f selected;
 
 // game stuff
-float posX = 0, posY = 0;
 
 bool keys[256], buttons[3];
 float mouseX, mouseY;
 
 Chunk* chunks[16];
+Entity entity;
 
 // GL stuff
-GLuint list;
+GLuint selectedList;
 
 void Resize(int width, int height) {
 	if (width == 0 || height == 0)
@@ -31,16 +39,18 @@ void Resize(int width, int height) {
 
 	glViewport(0, 0, width, height);
 
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-
 	Width = width;
 	Height = height;
-	mWidth = Width/scale;
-	mHeight = Height/scale;
-	
-	glOrtho(-mWidth/2, mWidth/2, mHeight/2, -mHeight/2, -1, 1);
+
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0, Width, height, 0, -1, 1);
 	glMatrixMode(GL_MODELVIEW);
+	glGetFloatv(GL_PROJECTION_MATRIX, gui);
+
+	cam.adjust(width/scale, height/scale);
+	
 }
 
 void InitGL(int width, int height) {       
@@ -48,7 +58,7 @@ void InitGL(int width, int height) {
 	glClearDepth(1.0);
 	glDepthFunc(GL_LESS);
 	glEnable(GL_DEPTH_TEST);			
-	glShadeModel(GL_SMOOTH);		
+	glShadeModel(GL_SMOOTH);
 
 	Resize(width, height);
 }
@@ -58,6 +68,22 @@ void start() {
 	buttons[1] = GLUT_UP;
 	buttons[2] = GLUT_UP;
 
+	entity = Entity(Vec3f(0.5f, 0.5f, 0.0f));
+
+	entity.setTarget(Vec3f(15.0f, 16.5f, 0.0f));
+
+	selectedList = glGenLists(1);
+	glNewList(selectedList, GL_COMPILE);
+	glBegin(GL_LINE_STRIP);
+		glVertex3f(0.0f, 1.0f, 1.0f);
+		glVertex3f(0.0f, 0.0f, 1.0f);
+		glVertex3f(1.0f, 0.0f, 1.0f);
+		glVertex3f(1.0f, 1.0f, 1.0f);
+		glVertex3f(0.0f, 1.0f, 1.0f);
+	glEnd();
+
+	glEndList();
+
 	for (int i = 0; i < 16; i++) {
 		int x = i / 4 - 2;
 		int y = i % 4 - 2;
@@ -66,7 +92,7 @@ void start() {
 	}
 }
 
-
+// Input
 void keyPressed(unsigned char key, int x, int y)  {
 	keys[key] = true;
 }
@@ -95,40 +121,68 @@ void handleInput() {
 	}
 
 	if (keys['w']) {
-		posY -= 1;
+		cam.posY += 2.0f / scale;
 	} else if (keys['s']) {
-		posY += 1;
+		cam.posY -= 2.0f / scale;
 	}
 	if (keys['a']) {
-		posX -= 1;
+		cam.posX -= 2.0f / scale;
 	} else if (keys['d']) {
-		posX += 1;
+		cam.posX += 2.0f / scale;
 	}
 
-	if (buttons[GLUT_LEFT_BUTTON] == GLUT_DOWN) {
-		posY += lMouseY - mouseY;
-		posX += lMouseX - mouseX;		
+	if (buttons[GLUT_RIGHT_BUTTON] == GLUT_DOWN) {
+		cam.posX += (float)(lMouseX - mouseX) / scale;		
+		cam.posY += (float)(lMouseY - mouseY) / scale;
+	} else if (buttons[GLUT_LEFT_BUTTON] == GLUT_DOWN) {
+		//drag select
 	}
+	
+
+	selected.set(floor(cam.posX -((Width/2-mouseX) / scale)), 
+				 floor(cam.posY - ((Height/2-mouseY) / scale)) + 1, 0.0f);
 
 	lMouseX = mouseX;
 	lMouseY = mouseY;
-
 }
 
 void Tick() {
-
+	entity.tick();
 }
 
-/* The main drawing function. */
 void Draw() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glLoadIdentity();
 
-	glTranslated(-posX/scale, posY/scale, 0);
+	cam.use();
 	
+	cam.apply();
+
 	for (int i = 0; i < 16; i++) {
+		// cout << i << endl;
 		chunks[i]->draw();
 	}
+
+	entity.draw();
+
+	glTranslated(selected.x, -selected.y, 0.0f);
+	glColor3f(0.0f, 1.0f, 0.0f);
+	glCallList(selectedList);
+	
+
+	// gui     // commented out for when I do work on gui
+	glPushMatrix();	
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		glLoadMatrixf(gui);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+
+		glColor3f(1.0f, 0.0f, 0.0f);
+		glutStrokeCharacter(GLUT_STROKE_ROMAN, 'a');
+		glutStrokeCharacter(GLUT_STROKE_ROMAN, 'b');
+		glutStrokeCharacter(GLUT_STROKE_ROMAN, 'c');
+		glutStrokeCharacter(GLUT_STROKE_ROMAN, 'd');
+	glPopMatrix();
 
 	glutSwapBuffers();
 }
